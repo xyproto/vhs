@@ -527,6 +527,42 @@ Set CursorBlink false
   <img width="600" alt="Example of setting the cursor blink." src="https://vhs.charm.sh/vhs-3rMCb80VEkaDdTOJMCrxKy.gif">
 </picture>
 
+#### Set Keypress Overlay
+
+Show key presses (`Ctrl`, `Alt`, `Shift`, `Enter`, `Tab`) as an overlay badge
+in the lower-right corner of the output. The badge uses a semi-transparent
+rounded background whose corner radius follows the global `BorderRadius`
+setting. Disabled by default.
+
+```elixir
+Set KeypressOverlay true
+```
+
+This can also be enabled from the command line with the `--keypress-overlay`
+flag:
+
+```sh
+vhs record.tape --keypress-overlay
+```
+
+#### Set Keypress Overlay Color
+
+Set the background color of the keypress overlay badge. Accepts a hex color
+string. Default is `#008080` (teal).
+
+```elixir
+Set KeypressOverlayColor "#FF6600"
+```
+
+#### Set Keypress Overlay Font
+
+Set the font used for the keypress overlay badge text. Accepts a path to a
+TTF or OTF font file. Uses Go Bold by default.
+
+```elixir
+Set KeypressOverlayFont "/usr/share/fonts/TTF/JetBrainsMono-Bold.ttf"
+```
+
 ### Type
 
 Use `Type` to emulate key presses. That is, you can use `Type` to script typing

@@ -43,12 +43,12 @@ var CommandFuncs = map[parser.CommandType]CommandFunc{
 	token.DELETE:     ExecuteKey(input.Delete),
 	token.INSERT:     ExecuteKey(input.Insert),
 	token.DOWN:       ExecuteKey(input.ArrowDown),
-	token.ENTER:      ExecuteKey(input.Enter),
+	token.ENTER:      ExecuteEnter,
 	token.LEFT:       ExecuteKey(input.ArrowLeft),
 	token.RIGHT:      ExecuteKey(input.ArrowRight),
 	token.SPACE:      ExecuteKey(input.Space),
 	token.UP:         ExecuteKey(input.ArrowUp),
-	token.TAB:        ExecuteKey(input.Tab),
+	token.TAB:        ExecuteTab,
 	token.ESCAPE:     ExecuteKey(input.Escape),
 	token.PAGE_UP:    ExecuteKey(input.PageUp),
 	token.PAGE_DOWN:  ExecuteKey(input.PageDown),
@@ -101,6 +101,20 @@ func ExecuteKey(k input.Key) CommandFunc {
 
 		return nil
 	}
+}
+
+// ExecuteEnter is a CommandFunc that presses the Enter key and triggers a
+// keypress overlay.
+func ExecuteEnter(c parser.Command, v *VHS) error {
+	v.SetKeypressOverlay("Enter")
+	return ExecuteKey(input.Enter)(c, v)
+}
+
+// ExecuteTab is a CommandFunc that presses the Tab key and triggers a
+// keypress overlay.
+func ExecuteTab(c parser.Command, v *VHS) error {
+	v.SetKeypressOverlay("Tab")
+	return ExecuteKey(input.Tab)(c, v)
 }
 
 // WaitTick is the amount of time to wait between checking for a match.
@@ -212,10 +226,10 @@ func ExecuteCtrl(c parser.Command, v *VHS) error {
 		return fmt.Errorf("failed to type key %s: %w", c.Args, err)
 	}
 
+	v.SetKeypressOverlay(formatKeypressLabel(c.Type, c.Args))
 	return nil
 }
 
-// ExecuteAlt is a CommandFunc that presses the argument key with the alt key
 // held down on the running instance of vhs.
 func ExecuteAlt(c parser.Command, v *VHS) error {
 	err := v.Page.Keyboard.Press(input.AltLeft)
@@ -251,6 +265,7 @@ func ExecuteAlt(c parser.Command, v *VHS) error {
 		return fmt.Errorf("failed to release Alt key: %w", err)
 	}
 
+	v.SetKeypressOverlay(formatKeypressLabel(c.Type, c.Args))
 	return nil
 }
 
@@ -291,6 +306,7 @@ func ExecuteShift(c parser.Command, v *VHS) error {
 		return fmt.Errorf("failed to release Shift key: %w", err)
 	}
 
+	v.SetKeypressOverlay(formatKeypressLabel(c.Type, c.Args))
 	return nil
 }
 
@@ -410,27 +426,30 @@ func ExecutePaste(_ parser.Command, v *VHS) error {
 
 // Settings maps the Set commands to their respective functions.
 var Settings = map[string]CommandFunc{
-	"FontFamily":    ExecuteSetFontFamily,
-	"FontSize":      ExecuteSetFontSize,
-	"Framerate":     ExecuteSetFramerate,
-	"Height":        ExecuteSetHeight,
-	"LetterSpacing": ExecuteSetLetterSpacing,
-	"LineHeight":    ExecuteSetLineHeight,
-	"PlaybackSpeed": ExecuteSetPlaybackSpeed,
-	"Padding":       ExecuteSetPadding,
-	"Theme":         ExecuteSetTheme,
-	"TypingSpeed":   ExecuteSetTypingSpeed,
-	"Width":         ExecuteSetWidth,
-	"Shell":         ExecuteSetShell,
-	"LoopOffset":    ExecuteLoopOffset,
-	"MarginFill":    ExecuteSetMarginFill,
-	"Margin":        ExecuteSetMargin,
-	"WindowBar":     ExecuteSetWindowBar,
-	"WindowBarSize": ExecuteSetWindowBarSize,
-	"BorderRadius":  ExecuteSetBorderRadius,
-	"WaitPattern":   ExecuteSetWaitPattern,
-	"WaitTimeout":   ExecuteSetWaitTimeout,
-	"CursorBlink":   ExecuteSetCursorBlink,
+	"FontFamily":      ExecuteSetFontFamily,
+	"FontSize":        ExecuteSetFontSize,
+	"Framerate":       ExecuteSetFramerate,
+	"Height":          ExecuteSetHeight,
+	"LetterSpacing":   ExecuteSetLetterSpacing,
+	"LineHeight":      ExecuteSetLineHeight,
+	"PlaybackSpeed":   ExecuteSetPlaybackSpeed,
+	"Padding":         ExecuteSetPadding,
+	"Theme":           ExecuteSetTheme,
+	"TypingSpeed":     ExecuteSetTypingSpeed,
+	"Width":           ExecuteSetWidth,
+	"Shell":           ExecuteSetShell,
+	"LoopOffset":      ExecuteLoopOffset,
+	"MarginFill":      ExecuteSetMarginFill,
+	"Margin":          ExecuteSetMargin,
+	"WindowBar":       ExecuteSetWindowBar,
+	"WindowBarSize":   ExecuteSetWindowBarSize,
+	"BorderRadius":    ExecuteSetBorderRadius,
+	"WaitPattern":     ExecuteSetWaitPattern,
+	"WaitTimeout":     ExecuteSetWaitTimeout,
+	"CursorBlink":     ExecuteSetCursorBlink,
+	"KeypressOverlay":      ExecuteSetKeypressOverlay,
+	"KeypressOverlayColor": ExecuteSetKeypressOverlayColor,
+	"KeypressOverlayFont":  ExecuteSetKeypressOverlayFont,
 }
 
 // ExecuteSet applies the settings on the running vhs specified by the
@@ -697,6 +716,29 @@ func ExecuteSetCursorBlink(c parser.Command, v *VHS) error {
 		return fmt.Errorf("failed to parse cursor blink: %w", err)
 	}
 
+	return nil
+}
+
+// ExecuteSetKeypressOverlay sets the keypress overlay display.
+func ExecuteSetKeypressOverlay(c parser.Command, v *VHS) error {
+	var err error
+	v.Options.KeypressOverlay, err = strconv.ParseBool(c.Args)
+	if err != nil {
+		return fmt.Errorf("failed to parse keypress overlay: %w", err)
+	}
+
+	return nil
+}
+
+// ExecuteSetKeypressOverlayColor sets the keypress overlay background color.
+func ExecuteSetKeypressOverlayColor(c parser.Command, v *VHS) error {
+	v.Options.KeypressOverlayColor = c.Args
+	return nil
+}
+
+// ExecuteSetKeypressOverlayFont sets the keypress overlay font family.
+func ExecuteSetKeypressOverlayFont(c parser.Command, v *VHS) error {
+	v.Options.KeypressOverlayFont = c.Args
 	return nil
 }
 

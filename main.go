@@ -38,7 +38,8 @@ var (
 	publishFlag bool
 	outputs     *[]string
 
-	quietFlag bool
+	quietFlag           bool
+	keypressOverlayFlag bool
 
 	//nolint:wrapcheck
 	rootCmd = &cobra.Command{
@@ -255,6 +256,7 @@ func main() {
 
 func init() {
 	rootCmd.Flags().BoolVarP(&publishFlag, "publish", "p", false, "publish your GIF to vhs.charm.sh and get a shareable URL")
+	rootCmd.Flags().BoolVar(&keypressOverlayFlag, "keypress-overlay", false, "show hotkey presses (Ctrl, Alt, Shift) as an overlay badge")
 	rootCmd.PersistentFlags().BoolVarP(&quietFlag, "quiet", "q", false, "quiet do not log messages. If publish flag is provided, it will log shareable URL")
 
 	outputs = rootCmd.Flags().StringSliceP("output", "o", []string{}, "file name(s) of video output")

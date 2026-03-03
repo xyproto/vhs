@@ -33,35 +33,45 @@ type VHS struct {
 	tty          *exec.Cmd
 	totalFrames  int
 	close        func() error
+
+	overlayLabel      string
+	overlayFramesLeft int
+	overlaySegments   []overlaySegment
 }
 
 // Options is the set of options for the setup.
 type Options struct {
-	Shell         Shell
-	FontFamily    string
-	FontSize      int
-	LetterSpacing float64
-	LineHeight    float64
-	TypingSpeed   time.Duration
-	Theme         Theme
-	Test          TestOptions
-	Video         VideoOptions
-	LoopOffset    float64
-	WaitTimeout   time.Duration
-	WaitPattern   *regexp.Regexp
-	CursorBlink   bool
-	Screenshot    ScreenshotOptions
-	Style         StyleOptions
+	Shell           Shell
+	FontFamily      string
+	FontSize        int
+	LetterSpacing   float64
+	LineHeight      float64
+	TypingSpeed     time.Duration
+	Theme           Theme
+	Test            TestOptions
+	Video           VideoOptions
+	LoopOffset      float64
+	WaitTimeout     time.Duration
+	WaitPattern     *regexp.Regexp
+	CursorBlink          bool
+	KeypressOverlay      bool
+	KeypressOverlayColor string
+	KeypressOverlayFont  string
+	Screenshot      ScreenshotOptions
+	Style           StyleOptions
 }
 
 const (
-	defaultFontSize      = 22
-	defaultTypingSpeed   = 50 * time.Millisecond
-	defaultLineHeight    = 1.0
-	defaultLetterSpacing = 1.0
-	fontsSeparator       = ","
-	defaultCursorBlink   = true
-	defaultWaitTimeout   = 15 * time.Second
+	defaultFontSize              = 22
+	defaultTypingSpeed           = 50 * time.Millisecond
+	defaultLineHeight            = 1.0
+	defaultLetterSpacing         = 1.0
+	fontsSeparator               = ","
+	defaultCursorBlink           = true
+	defaultKeypressOverlay       = false
+	defaultKeypressOverlayColor  = "#008080"
+	defaultKeypressOverlayFont   = ""
+	defaultWaitTimeout           = 15 * time.Second
 )
 
 var defaultWaitPattern = regexp.MustCompile(">$")
@@ -95,18 +105,21 @@ func DefaultVHSOptions() Options {
 	screenshot := NewScreenshotOptions(video.Input, style)
 
 	return Options{
-		FontFamily:    defaultFontFamily,
-		FontSize:      defaultFontSize,
-		LetterSpacing: defaultLetterSpacing,
-		LineHeight:    defaultLineHeight,
-		TypingSpeed:   defaultTypingSpeed,
-		Shell:         Shells[defaultShell],
-		Theme:         DefaultTheme,
-		CursorBlink:   defaultCursorBlink,
-		Video:         video,
-		Screenshot:    screenshot,
-		WaitTimeout:   defaultWaitTimeout,
-		WaitPattern:   defaultWaitPattern,
+		FontFamily:      defaultFontFamily,
+		FontSize:        defaultFontSize,
+		LetterSpacing:   defaultLetterSpacing,
+		LineHeight:      defaultLineHeight,
+		TypingSpeed:     defaultTypingSpeed,
+		Shell:           Shells[defaultShell],
+		Theme:           DefaultTheme,
+		CursorBlink:          defaultCursorBlink,
+		KeypressOverlay:      defaultKeypressOverlay,
+		KeypressOverlayColor: defaultKeypressOverlayColor,
+		KeypressOverlayFont:  defaultKeypressOverlayFont,
+		Video:           video,
+		Screenshot:      screenshot,
+		WaitTimeout:     defaultWaitTimeout,
+		WaitPattern:     defaultWaitPattern,
 	}
 }
 
@@ -224,6 +237,34 @@ func (vhs *VHS) Render() error {
 	// Apply Loop Offset by modifying frame sequence
 	if err := vhs.ApplyLoopOffset(); err != nil {
 		return err
+	}
+
+	// Composite keypress overlay badges onto text frame PNGs.
+	// All text frames are re-encoded for pixel format consistency.
+	if vhs.Options.KeypressOverlay && len(vhs.overlaySegments) > 0 {
+		startFrame := vhs.Options.Video.StartingFrame
+		endFrame := startFrame + vhs.totalFrames - 1
+
+		// Adjust segment frame numbers for loop offset renumbering.
+		for i := range vhs.overlaySegments {
+			seg := &vhs.overlaySegments[i]
+			if seg.StartFrame < startFrame {
+				seg.StartFrame += vhs.totalFrames
+			}
+			if seg.EndFrame < startFrame {
+				seg.EndFrame += vhs.totalFrames
+			}
+		}
+		applyOverlaySegments(
+			vhs.overlaySegments,
+			vhs.Options.Video.Style.BorderRadius,
+			vhs.Options.KeypressOverlayColor,
+			vhs.Options.KeypressOverlayFont,
+			vhs.Options.Video.Input,
+			startFrame,
+			endFrame,
+			vhs.Options.Video.Framerate,
+		)
 	}
 
 	// Generate the video(s) with the frames.
@@ -358,7 +399,35 @@ func (vhs *VHS) Record(ctx context.Context) <-chan error {
 					continue
 				}
 
+				// Track keypress overlay state.
+				vhs.mutex.Lock()
+				overlayLabel := ""
+				if vhs.overlayFramesLeft > 0 {
+					overlayLabel = vhs.overlayLabel
+					vhs.overlayFramesLeft--
+					if vhs.overlayFramesLeft == 0 {
+						vhs.overlayLabel = ""
+					}
+				}
+				vhs.mutex.Unlock()
+
 				counter++
+
+				// Record overlay segment for ffmpeg post-processing.
+				if vhs.Options.KeypressOverlay && overlayLabel != "" {
+					n := len(vhs.overlaySegments)
+					if n > 0 && vhs.overlaySegments[n-1].Label == overlayLabel &&
+						vhs.overlaySegments[n-1].EndFrame == counter-1 {
+						vhs.overlaySegments[n-1].EndFrame = counter
+					} else {
+						vhs.overlaySegments = append(vhs.overlaySegments, overlaySegment{
+							Label:      overlayLabel,
+							StartFrame: counter,
+							EndFrame:   counter,
+						})
+					}
+				}
+
 				if err := os.WriteFile(
 					filepath.Join(vhs.Options.Video.Input, fmt.Sprintf(cursorFrameFormat, counter)),
 					cursor,
@@ -385,6 +454,20 @@ func (vhs *VHS) Record(ctx context.Context) <-chan error {
 	}()
 
 	return ch
+}
+
+// SetKeypressOverlay sets the keypress overlay label to display for the next
+// second of recording.
+func (vhs *VHS) SetKeypressOverlay(label string) {
+	vhs.mutex.Lock()
+	defer vhs.mutex.Unlock()
+
+	if !vhs.Options.KeypressOverlay {
+		return
+	}
+
+	vhs.overlayLabel = label
+	vhs.overlayFramesLeft = int(float64(vhs.Options.Video.Framerate) * overlayDurationSec)
 }
 
 // ResumeRecording indicates to VHS that the recording should be resumed.

@@ -485,7 +485,7 @@ func (p *Parser) parseSet() Command {
 				NewError(p.cur, windowBar+" is not a valid bar style."),
 			)
 		}
-	case token.MARGIN_FILL:
+	case token.MARGIN_FILL, token.KEYPRESS_OVERLAY_COLOR:
 		cmd.Args = p.peek.Literal
 		p.nextToken()
 
@@ -505,7 +505,7 @@ func (p *Parser) parseSet() Command {
 				)
 			}
 		}
-	case token.CURSOR_BLINK:
+	case token.CURSOR_BLINK, token.KEYPRESS_OVERLAY:
 		cmd.Args = p.peek.Literal
 		p.nextToken()
 
